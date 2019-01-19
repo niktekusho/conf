@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const assert = require('assert');
+const assert = require('assert').strict;
 const EventEmitter = require('events');
 const dotProp = require('dot-prop');
 const makeDir = require('make-dir');
@@ -17,6 +17,18 @@ const plainObject = () => Object.create(null);
 delete require.cache[__filename];
 const parentDir = path.dirname((module.parent && module.parent.filename) || '.');
 
+/*
+ * https://security.stackexchange.com/a/90850
+ * The IV depends on the mode of operation.
+ * For most modes (e.g. CBC), the IV must have the same length as the block.
+ * AES uses 128-bit blocks, so a 128-bit IV.
+ * Note that AES-256 uses a 256-bit key (hence the name), but still with 128-bit blocks.
+ * This is the length in bytes.
+ */
+const ivLength = 16;
+
+const fileEnc = 'utf8';
+
 class Conf {
 	constructor(options) {
 		const pkgPath = pkgUp.sync(parentDir);
@@ -24,7 +36,7 @@ class Conf {
 		options = Object.assign({
 			// Can't use `require` because of Webpack being annoying:
 			// https://github.com/webpack/webpack/issues/196
-			projectName: pkgPath && JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name
+			projectName: pkgPath && JSON.parse(fs.readFileSync(pkgPath, fileEnc)).name
 		}, options);
 
 		if (!options.projectName && !options.cwd) {
@@ -42,7 +54,17 @@ class Conf {
 		}
 
 		this.events = new EventEmitter();
-		this.encryptionKey = options.encryptionKey;
+
+		// Using the current cypher algorithm (aes-256) the encryption key must be 32 Bytes long
+		// So if a key is passed as an option, to ensure its length is appropriate I create an sha256 hash of it and store it.
+		if (options.encryptionKey) {
+			this.encryptionKey = crypto.createHash('sha256')
+				.update(options.encryptionKey)
+				.digest();
+		} else {
+			// Leave the encryption key undefined
+			this.encryptionKey = undefined;
+		}
 
 		const fileExtension = options.fileExtension ? `.${options.fileExtension}` : '';
 		this.path = path.resolve(options.cwd, `${options.configName}${fileExtension}`);
@@ -112,7 +134,6 @@ class Conf {
 			const newValue = this.get(key);
 
 			try {
-				// TODO: Use `util.isDeepStrictEqual` when targeting Node.js 10
 				assert.deepEqual(newValue, oldValue);
 			} catch (_) {
 				currentValue = newValue;
@@ -130,13 +151,16 @@ class Conf {
 
 	get store() {
 		try {
-			let data = fs.readFileSync(this.path, this.encryptionKey ? null : 'utf8');
+			let data = fs.readFileSync(this.path, this.encryptionKey ? null : fileEnc);
 
 			if (this.encryptionKey) {
 				try {
-					const decipher = crypto.createDecipher('aes-256-cbc', this.encryptionKey);
-					data = Buffer.concat([decipher.update(data), decipher.final()]);
-				} catch (_) {}
+					const iv = crypto.randomBytes(ivLength);
+					const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
+					data = Buffer.concat([decipher.update(data), decipher.final(fileEnc)]);
+				} catch (error) {
+					console.error(error);
+				}
 			}
 
 			return Object.assign(plainObject(), JSON.parse(data));
@@ -161,8 +185,13 @@ class Conf {
 		let data = JSON.stringify(value, null, '\t');
 
 		if (this.encryptionKey) {
-			const cipher = crypto.createCipher('aes-256-cbc', this.encryptionKey);
-			data = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]);
+			try {
+				const iv = crypto.randomBytes(ivLength);
+				const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
+				data = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final(fileEnc)]);
+			} catch (error) {
+				console.error(error);
+			}
 		}
 
 		writeFileAtomic.sync(this.path, data);
