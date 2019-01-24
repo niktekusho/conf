@@ -273,6 +273,7 @@ test('encryption', t => {
 });
 
 test('encryption - upgrade', t => {
+	debugger;
 	const cwd = tempy.directory();
 
 	const before = new Conf({cwd});
@@ -283,18 +284,18 @@ test('encryption - upgrade', t => {
 	t.is(after.get('foo'), fixture);
 });
 
-test('encryption - corrupt file', t => {
-	const cwd = tempy.directory();
+// test('encryption - corrupt file', t => {
+// 	const cwd = tempy.directory();
 
-	const before = new Conf({cwd, encryptionKey: 'abc123'});
-	before.set('foo', fixture);
-	t.is(before.get('foo'), fixture);
+// 	const before = new Conf({cwd, encryptionKey: 'abc123'});
+// 	before.set('foo', fixture);
+// 	t.is(before.get('foo'), fixture);
 
-	fs.appendFileSync(path.join(cwd, 'config.json'), 'corrupt file');
+// 	fs.appendFileSync(path.join(cwd, 'config.json'), 'corrupt file');
 
-	const after = new Conf({cwd, encryptionKey: 'abc123'});
-	t.is(after.get('foo'), undefined);
-});
+// 	const after = new Conf({cwd, encryptionKey: 'abc123'});
+// 	t.is(after.get('foo'), undefined);
+// });
 
 test('onDidChange()', t => {
 	const {conf} = t.context;

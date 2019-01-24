@@ -155,11 +155,16 @@ class Conf {
 
 			if (this.encryptionKey) {
 				try {
-					const iv = crypto.randomBytes(ivLength);
+					debugger;
+					const iv = Buffer.from(data, fileEnc).slice(0, ivLength);
+					console.log(`r IV: ${iv.toString('hex')}`);
 					const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
-					data = Buffer.concat([decipher.update(data), decipher.final(fileEnc)]);
+					const encodedStore = data.slice(ivLength);
+					data = Buffer.concat([decipher.update(encodedStore), decipher.final()]);
 				} catch (error) {
 					console.error(error);
+					// Rethrow
+					throw error;
 				}
 			}
 
@@ -186,11 +191,14 @@ class Conf {
 
 		if (this.encryptionKey) {
 			try {
+				debugger;
 				const iv = crypto.randomBytes(ivLength);
 				const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
-				data = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final(fileEnc)]);
+				console.log(`w IV: ${iv.toString('hex')}`);
+				data = Buffer.concat([iv, cipher.update(data), cipher.final()]);
 			} catch (error) {
 				console.error(error);
+				throw error;
 			}
 		}
 
